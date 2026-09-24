@@ -1,0 +1,12 @@
+{
+  "total_scanned": 62,
+  "unique_files": 61,
+  "duplicate_pairs": [
+    {
+      "file1": "data\\raw\\微信图片_20260920142725_188_28(1).png",
+      "file2": "data\\raw\\微信图片_20260920142725_188_28.png",
+      "md5": "9fbc0fbcb7dda95bf723a28f3a2a1b4b",
+      "phash": "ef8a9501fade802b"
+    }
+  ]
+}
