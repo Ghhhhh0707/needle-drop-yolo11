@@ -1,0 +1,18 @@
+# YOLO11 improved training config
+# 阶段4消融实验使用
+
+model: yolo11s.pt
+epochs: 200
+imgsz: 1280
+batch: 8
+patience: 30
+
+# Stronger augmentation
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+mosaic: 1.0
+fliplr: 0.5
+flipud: 0.0
+
+optimizer: auto

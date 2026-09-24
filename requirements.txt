@@ -1,0 +1,12 @@
+ultralytics>=8.3.0
+opencv-python
+pandas
+pyyaml
+onnxruntime
+openvino>=2024.0
+gradio
+matplotlib
+pillow
+numpy
+scikit-learn
+imutils

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Training outputs
+runs/
+*.pt
+*.pth
+*.onnx
+*.bin
+*.xml
+*.engine
+
+# Data (raw images not tracked, only configs)
+data/raw/
+data/images/
+data/labels/
+!data/data.yaml
+
+# Virtual environments
+venv/
+env/
+needle/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
