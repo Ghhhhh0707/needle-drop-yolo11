@@ -1,135 +1,111 @@
 """
 数据集校验脚本
-检查项：
-1. 每张图片有同名TXT，反之亦然（无孤儿文件）
-2. 所有坐标在 [0,1] 范围内
-3. 框宽高 > 0
-4. 类别统计
+检查：图片-标注对应、越界框、负值、空标注、类别ID有效性
 """
-import os
-import sys
+import argparse
 from pathlib import Path
-from collections import Counter
+from PIL import Image
 
 
-def validate_split(split_dir, split_name):
-    """
-    校验一个划分（train/val/test）
-    """
-    img_dir = Path(split_dir) / "images" / split_name
-    lbl_dir = Path(split_dir) / "labels" / split_name
+def validate_dataset(data_root):
+    data_root = Path(data_root)
+    issues = []
+    stats = {"total_images": 0, "total_labels": 0, "total_boxes": 0, "empty_labels": 0}
 
-    if not img_dir.exists() or not lbl_dir.exists():
-        print(f"[跳过] 目录不存在: {img_dir} 或 {lbl_dir}")
-        return False
-
-    images = {p.stem: p for p in img_dir.glob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".bmp")}
-    labels = {p.stem: p for p in lbl_dir.glob("*.txt")}
-
-    errors = []
-    warnings = []
-    class_counter = Counter()
-    total_boxes = 0
-
-    # 孤儿文件检查
-    img_only = set(images.keys()) - set(labels.keys())
-    lbl_only = set(labels.keys()) - set(images.keys())
-
-    if img_only:
-        warnings.append(f"无标注的图片: {len(img_only)} 张")
-        for name in sorted(img_only)[:5]:
-            warnings.append(f"  - {name}")
-    if lbl_only:
-        warnings.append(f"无图片的标注: {len(lbl_only)} 个")
-        for name in sorted(lbl_only)[:5]:
-            warnings.append(f"  - {name}")
-
-    # 校验每个标注文件
-    for stem, lbl_path in labels.items():
-        if stem not in images:
-            continue
-
-        img_path = images[stem]
-        # 读取图片尺寸
-        try:
-            from PIL import Image
-            with Image.open(img_path) as img:
-                img_w, img_h = img.size
-        except Exception as e:
-            errors.append(f"无法读取图片 {img_path}: {e}")
-            continue
-
-        with open(lbl_path, "r", encoding="utf-8") as f:
-            lines = f.read().strip().split("\n")
-
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split()
-            if len(parts) != 5:
-                errors.append(f"{lbl_path.name} 第{line_num}行: 格式错误 ({len(parts)} 列)")
-                continue
-
-            try:
-                cls, xc, yc, w, h = map(float, parts)
-                cls = int(cls)
-            except ValueError:
-                errors.append(f"{lbl_path.name} 第{line_num}行: 数值解析失败")
-                continue
-
-            total_boxes += 1
-            class_counter[cls] += 1
-
-            # 范围检查
-            for val, name in [(xc, "x_center"), (yc, "y_center"), (w, "width"), (h, "height")]:
-                if not (0.0 <= val <= 1.0):
-                    errors.append(f"{lbl_path.name} 第{line_num}行: {name}={val} 越界 [0,1]")
-
-            if w <= 0 or h <= 0:
-                errors.append(f"{lbl_path.name} 第{line_num}行: 框宽高为零或负 (w={w}, h={h})")
-
-    # 输出报告
-    print(f"\n{'='*50}")
-    print(f"校验报告: {split_name}")
-    print(f"{'='*50}")
-    print(f"图片数: {len(images)}, 标注数: {len(labels)}")
-    print(f"总检测框: {total_boxes}")
-    print(f"类别分布: {dict(class_counter)}")
-
-    if warnings:
-        print(f"\n警告 ({len(warnings)}):")
-        for w in warnings:
-            print(f"  ⚠ {w}")
-
-    if errors:
-        print(f"\n错误 ({len(errors)}):")
-        for e in errors:
-            print(f"  ✗ {e}")
-        return False
-    else:
-        print("  ✓ 校验通过")
-        return True
-
-
-def validate_all(data_dir="data"):
-    data_dir = Path(data_dir)
-    all_pass = True
     for split in ["train", "val", "test"]:
-        ok = validate_split(data_dir, split)
-        all_pass = all_pass and ok
+        img_dir = data_root / "images" / split
+        lbl_dir = data_root / "labels" / split
 
-    print(f"\n{'='*50}")
-    if all_pass:
-        print("✓ 全部校验通过")
+        if not img_dir.exists():
+            continue
+
+        for img_f in sorted(img_dir.glob("*")):
+            if img_f.suffix.lower() not in (".jpg", ".jpeg", ".png", ".bmp"):
+                continue
+
+            stats["total_images"] += 1
+            lbl_f = lbl_dir / f"{img_f.stem}.txt"
+
+            # Check label existence
+            if not lbl_f.exists():
+                issues.append(f"[MISSING] {split}/{img_f.name}: no matching label")
+                continue
+
+            stats["total_labels"] += 1
+
+            # Load image size
+            try:
+                with Image.open(img_f) as img:
+                    img_w, img_h = img.size
+            except Exception as e:
+                issues.append(f"[CORRUPT] {split}/{img_f.name}: {e}")
+                continue
+
+            # Validate annotations
+            with open(lbl_f) as f:
+                lines = f.readlines()
+
+            if not lines or all(not l.strip() for l in lines):
+                stats["empty_labels"] += 1
+                issues.append(f"[EMPTY] {split}/{lbl_f.name}: no annotations")
+                continue
+
+            for line_num, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                parts = line.split()
+                if len(parts) != 5:
+                    issues.append(f"[FORMAT] {split}/{lbl_f.name} line {line_num}: expected 5 values, got {len(parts)}")
+                    continue
+
+                try:
+                    cls_id = int(parts[0])
+                    x, y, w, h = map(float, parts[1:])
+                except ValueError:
+                    issues.append(f"[FORMAT] {split}/{lbl_f.name} line {line_num}: non-numeric values")
+                    continue
+
+                if cls_id != 0:
+                    issues.append(f"[CLASS] {split}/{lbl_f.name} line {line_num}: class_id={cls_id}, expected 0")
+
+                if not (0 <= x <= 1 and 0 <= y <= 1 and 0 <= w <= 1 and 0 <= h <= 1):
+                    issues.append(f"[BOUNDS] {split}/{lbl_f.name} line {line_num}: normalized values out of [0,1]")
+
+                if w <= 0 or h <= 0:
+                    issues.append(f"[SIZE] {split}/{lbl_f.name} line {line_num}: width={w}, height={h}")
+
+                # Check if box extends beyond image (strict check)
+                if x - w/2 < 0 or x + w/2 > 1 or y - h/2 < 0 or y + h/2 > 1:
+                    issues.append(f"[OVERFLOW] {split}/{lbl_f.name} line {line_num}: box exceeds image bounds")
+
+                stats["total_boxes"] += 1
+
+    # Print results
+    print("=" * 50)
+    print("Dataset Validation Report")
+    print("=" * 50)
+    print(f"Images: {stats['total_images']}")
+    print(f"Labels: {stats['total_labels']}")
+    print(f"Boxes:  {stats['total_boxes']}")
+    print(f"Empty labels: {stats['empty_labels']}")
+    print(f"Issues: {len(issues)}")
+    print("-" * 50)
+
+    if issues:
+        for issue in issues[:20]:
+            print(issue)
+        if len(issues) > 20:
+            print(f"... and {len(issues) - 20} more issues")
     else:
-        print("✗ 存在错误，请修复后重新运行")
-        sys.exit(1)
+        print("All checks passed!")
+
+    return len(issues) == 0
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Validate YOLO dataset")
-    parser.add_argument("--data", type=str, default="data", help="Data directory")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dir", type=str, default="data/processed", help="Dataset root directory")
     args = parser.parse_args()
-    validate_all(args.data)
+    validate_dataset(args.dir)

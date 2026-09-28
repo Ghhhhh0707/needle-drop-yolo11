@@ -1,7 +1,14 @@
-path: ./data
+# YOLO Dataset Configuration
+# Generated for needle-drop detection project
+
+path: ../data/processed  # dataset root dir (relative to project root)
 train: images/train
 val: images/val
 test: images/test
 
+# Classes
 names:
-  0: defect
+  0: needle-drop
+
+# Dataset info
+nc: 1  # number of classes

@@ -1,0 +1,4 @@
+hole_1
+hole_2
+missing_stitch_1
+missing_stitch_2
